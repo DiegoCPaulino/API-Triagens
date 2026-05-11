@@ -1,0 +1,99 @@
+PROJETO NORA — Sprint 4
+Observacoes de Teste Manual
+================================================
+
+COMO EXECUTAR OS TESTES AUTOMATIZADOS
+--------------------------------------
+Os testes ficam em tests/ e nao usam pytest nem unittest.
+Execute a partir da raiz do projeto:
+
+  python -m tests.test_validators
+  python -m tests.test_associacao
+  python -m tests.test_exportador_json
+
+Cada arquivo imprime "Todos os testes passaram." ao final se tudo estiver correto.
+Os testes de exportador_json criam e removem arquivos temporarios em exports/.
+
+
+CENARIOS DE TESTE MANUAL (a executar com o sistema rodando)
+-------------------------------------------------------------
+
+[1] CONEXAO COM O BANCO
+  - Iniciar sem credenciais configuradas → sistema exibe aviso e continua.
+  - Iniciar com credenciais corretas → exibe "[OK] Conexao com o banco Oracle estabelecida."
+  - Desligar o banco durante o uso → operacao retorna mensagem de erro amigavel.
+
+[2] CRUD DE TRIAGEM
+  - Criar triagem com CPF valido → exibe triagem criada com status "em analise".
+  - Criar triagem com CPF ja cadastrado → erro 409 "Ja existe uma triagem com este CPF."
+  - Criar triagem com idade 10 → erro de validacao (fora da faixa 11-17).
+  - Criar triagem com idade 18 → erro de validacao.
+  - Buscar triagem por ID inexistente → erro 404.
+  - Atualizar triagem com status "aprovada" → bloqueado.
+  - Excluir triagem que gerou paciente → bloqueado.
+
+[3] APROVACAO DE TRIAGEM
+  - Aprovar triagem "em analise" → coleta dados do paciente antes de alterar banco.
+  - Cancelar durante coleta de dados → triagem permanece "em analise" (banco nao alterado).
+  - Informar data de nascimento com idade incompativel com triagem → solicita nova data.
+  - CEP valido na aprovacao → endereco preenchido automaticamente via ViaCEP.
+  - CEP invalido (8 digitos errados) → solicita novamente.
+  - CEP nao encontrado no ViaCEP → preenchimento manual do endereco.
+  - Aprovacao bem-sucedida → exibe paciente criado; oferece associacao de dentista.
+  - Aprovar triagem ja "aprovada" → bloqueado.
+
+[4] REPROVACAO DE TRIAGEM
+  - Reprovar triagem "em analise" → status muda para "reprovada"; nenhum paciente criado.
+  - Reprovar triagem "aprovada" → bloqueado.
+
+[5] PACIENTES
+  - Listar todos os pacientes → exibe lista com coluna "nome_dentista".
+  - Buscar paciente por ID inexistente → erro 404.
+  - Listar pacientes sem dentista → lista apenas pacientes com ID_DENTISTA NULL.
+  - Listar pacientes com dentista → JOIN com TB_DENTISTA.
+
+[6] ASSOCIACAO PACIENTE-DENTISTA
+  - Paciente sem dentista → sistema sugere dentista com vagas, priorizando mesma cidade.
+  - Aceitar sugestao → VAGAS_DISPONIVEIS do dentista reduz em 1.
+  - Recusar sugestao e informar outro ID → sistema valida vagas e vincula.
+  - Reassociar paciente com dentista → devolve 1 vaga ao dentista anterior, consome 1 vaga do novo.
+  - Tentar vincular dentista sem vagas → bloqueado com erro 409.
+  - Informar o mesmo dentista que ja esta vinculado → mensagem "nenhuma alteracao realizada".
+
+[7] CONSULTAS FILTRADAS E EXPORTACAO JSON
+  - Triagens por status "em analise" → lista apenas triagens nesse status.
+  - Triagens por prioridade "alta" → lista apenas triagens de prioridade alta.
+  - Pacientes sem dentista → lista com exportacao JSON disponivel.
+  - Pacientes por dentista → informa ID do dentista; lista os pacientes.
+  - Dentistas com vagas → lista dentistas com VAGAS_DISPONIVEIS > 0.
+  - Exportar resultado → arquivo criado em exports/ com nome e timestamp.
+  - Verificar estrutura do JSON: campos consulta, filtro, total_registros, data_exportacao, dados.
+
+[8] API EXTERNA (ViaCEP)
+  - Consultar CEP valido (ex: 01310100) → retorna logradouro, bairro, cidade, UF.
+  - Consultar CEP inexistente (ex: 00000000) → mensagem "CEP nao encontrado."
+  - Consultar CEP invalido (menos de 8 digitos) → erro de validacao antes da chamada HTTP.
+  - Simular sem internet (desligar rede) → mensagem "Sem conexao com a internet."
+
+[9] VALIDACOES GERAIS
+  - Nome sem sobrenome → rejeitado.
+  - CPF com menos de 11 digitos → rejeitado.
+  - Descricao com menos de 10 caracteres → rejeitada.
+  - Prioridade fora de {baixa, media, alta} → rejeitada.
+  - Opcao invalida no menu → solicita novamente sem encerrar o programa.
+
+[10] FLUXO COMPLETO (CAMINHO DOURADO)
+  1. Criar triagem com dados validos.
+  2. Listar triagens → confirmar status "em analise".
+  3. Aprovar triagem → informar dados completos → CEP consultado automaticamente.
+  4. Confirmar criacao do paciente.
+  5. Aceitar sugestao de dentista → paciente vinculado.
+  6. Consultar pacientes com dentista → confirmar vinculo.
+  7. Exportar lista de pacientes por dentista para JSON.
+  8. Abrir o arquivo em exports/ e verificar estrutura.
+
+
+RESULTADO ESPERADO
+------------------
+Todos os fluxos acima devem funcionar sem erros de Python (sem traceback).
+Mensagens de erro devem ser amigaveis e o sistema nunca deve encerrar abruptamente.
