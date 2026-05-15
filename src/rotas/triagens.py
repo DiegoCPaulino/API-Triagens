@@ -5,6 +5,7 @@ from src.modulos.triagens import (
     criar_triagem, atualizar_triagem, excluir_triagem,
     aprovar_triagem, reprovar_triagem,
 )
+from src.modulos.pacientes import criar_paciente_a_partir_de_triagem
 from src.apoio.respostas_http import responder_http
 from src.apoio.utils import gerar_resposta
 
@@ -50,3 +51,11 @@ def aprovar(id_triagem):
 @bp_triagens.route("/<int:id_triagem>/reprovar", methods=["PATCH"])
 def reprovar(id_triagem):
     return responder_http(reprovar_triagem(id_triagem))
+
+
+@bp_triagens.route("/<int:id_triagem>/paciente", methods=["POST"])
+def criar_paciente(id_triagem):
+    payload = request.get_json(silent=True)
+    if payload is None:
+        return responder_http(gerar_resposta(False, 400, "Payload JSON ausente ou inválido.", error=[]))
+    return responder_http(criar_paciente_a_partir_de_triagem(id_triagem, payload))

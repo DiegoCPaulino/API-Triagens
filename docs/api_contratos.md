@@ -7,7 +7,7 @@ Esta API é o back-end Flask do **Projeto Nora**, desenvolvido originalmente com
 O domínio é **triagem odontológica para adolescentes (11 a 17 anos)**, com o fluxo central: triagem → aprovação → paciente → dentista voluntário. A API é consumida por um front-end separado e expõe recursos REST com respostas JSON padronizadas.
 
 **Stack:** Python 3, Flask, flask-cors, oracledb, requests (ViaCEP).
-**Estado:** em construção incremental. No momento desta documentação, **8 endpoints** estão implementados: `GET /api/health`, as 5 rotas CRUD de triagens (Prompt 09) e as 2 rotas de aprovação/reprovação (Prompt 10). Os 14 restantes são contrato planejado.
+**Estado:** em construção incremental. No momento desta documentação, **19 endpoints** estão implementados: `GET /api/health`, as 5 rotas CRUD de triagens, as 2 rotas de aprovação/reprovação, `POST /api/triagens/<id>/paciente`, as 4 rotas de pacientes, as 4 rotas de dentistas e as 2 rotas de associação paciente-dentista. Os 3 restantes são contrato planejado.
 
 ---
 
@@ -332,49 +332,201 @@ Reprova uma triagem. Só é permitido se o `status` atual for `"em análise"`.
 
 ---
 
+### 5.3 Triagens — Criar Paciente (Lote 11-13)
+
+Blueprint: `src/rotas/triagens.py` | Módulo: `src/modulos/pacientes.py`
+
+#### `POST /api/triagens/<id>/paciente`
+
+Cria um paciente a partir de uma triagem já aprovada. A rota reside no blueprint de triagens pois o path inicia com `/api/triagens/<id>`.
+
+**Parâmetros de path:** `id` — ID da triagem aprovada.
+
+**Payload de entrada:**
+
+```json
+{
+  "data_nascimento": "15/03/2010",
+  "rg": "123456789",
+  "telefone": "11999887766",
+  "cep": "01310100",
+  "logradouro": "Avenida Paulista",
+  "numero": "1000",
+  "complemento": "Apto 42",
+  "bairro": "Bela Vista",
+  "cidade": "Sao Paulo",
+  "uf": "SP"
+}
+```
+
+`complemento` é opcional. `nome_completo`, `cpf` e `idade` são herdados da triagem e não devem ser enviados no payload.
+
+**Resposta — 200 OK:** retorna o objeto do paciente criado (mesmo formato de `GET /api/pacientes/<id>`).
+
+**Resposta — 409 (triagem não aprovada):** `{"status": false, "code": 409, "message": "A triagem precisa estar com status 'aprovada' para criar um paciente.", "data": null}`
+
+**Resposta — 409 (paciente duplicado):** `{"status": false, "code": 409, "message": "Já existe um paciente vinculado a esta triagem.", "data": null}`
+
+**Resposta — 404 (triagem não encontrada):** `{"status": false, "code": 404, "message": "Triagem não encontrada.", "data": null}`
+
+---
+
+### 5.4 Pacientes (Lote 11-13)
+
+Blueprint: `src/rotas/pacientes.py` | Módulo: `src/modulos/pacientes.py`
+
+#### `GET /api/pacientes/`
+
+Retorna todos os pacientes cadastrados, ordenados por `ID_PACIENTE`.
+
+**Parâmetros:** nenhum.
+
+**Resposta — 200 OK:** `data` é um array de objetos paciente (pode estar vazio).
+
+---
+
+#### `GET /api/pacientes/sem-dentista`
+
+Retorna pacientes sem dentista vinculado (`ID_DENTISTA IS NULL`).
+
+**Parâmetros:** nenhum.
+
+**Resposta — 200 OK:** `data` é um array de objetos paciente (pode estar vazio).
+
+---
+
+#### `GET /api/pacientes/com-dentista`
+
+Retorna pacientes com dentista vinculado (`ID_DENTISTA IS NOT NULL`).
+
+**Parâmetros:** nenhum.
+
+**Resposta — 200 OK:** `data` é um array de objetos paciente (pode estar vazio).
+
+---
+
+#### `GET /api/pacientes/<id>`
+
+Busca paciente por ID. O conversor `<int:id_paciente>` garante 404 automático para IDs não numéricos.
+
+**Parâmetros de path:** `id` — inteiro positivo.
+
+**Resposta — 200 OK:** retorna o objeto do paciente encontrado.
+
+**Resposta — 404 (não encontrado):** `{"status": false, "code": 404, "message": "Paciente não encontrado.", "data": null}`
+
+---
+
+### 5.5 Dentistas (Lote 11-13)
+
+Blueprint: `src/rotas/dentistas.py` | Módulo: `src/modulos/dentistas.py`
+
+#### `GET /api/dentistas/`
+
+Retorna todos os dentistas cadastrados.
+
+**Parâmetros:** nenhum.
+
+**Resposta — 200 OK:** `data` é um array de objetos dentista (pode estar vazio).
+
+---
+
+#### `GET /api/dentistas/com-vagas`
+
+Retorna apenas dentistas com `vagas_disponiveis > 0`.
+
+**Parâmetros:** nenhum.
+
+**Resposta — 200 OK:** `data` é um array de objetos dentista (pode estar vazio se não houver vagas disponíveis).
+
+---
+
+#### `GET /api/dentistas/<id>`
+
+Busca dentista por ID. O conversor `<int:id_dentista>` garante 404 automático para IDs não numéricos.
+
+**Parâmetros de path:** `id` — inteiro positivo.
+
+**Resposta — 200 OK:** retorna o objeto do dentista encontrado.
+
+**Resposta — 404 (não encontrado):** `{"status": false, "code": 404, "message": "Dentista não encontrado.", "data": null}`
+
+---
+
+#### `GET /api/dentistas/<id>/pacientes`
+
+Retorna todos os pacientes atualmente vinculados a um dentista específico.
+
+**Parâmetros de path:** `id` — ID do dentista.
+
+**Resposta — 200 OK:** `data` é um array de objetos paciente (pode estar vazio se o dentista não tiver pacientes vinculados).
+
+**Resposta — 404 (dentista não encontrado):** `{"status": false, "code": 404, "message": "Dentista não encontrado.", "data": null}`
+
+---
+
+### 5.6 Associação Paciente-Dentista (Lote 11-13)
+
+Blueprint: `src/rotas/pacientes.py` | Módulos: `src/modulos/associacao.py` e `src/modulos/pacientes.py`
+
+#### `GET /api/pacientes/<id>/sugestao-dentista`
+
+Sugere o dentista mais compatível com o paciente com base em localização e disponibilidade de vagas. O algoritmo prioriza: mesma cidade → mesma UF → qualquer dentista com vaga. Em caso de empate, usa a menor diferença numérica entre CEPs.
+
+**Parâmetros de path:** `id` — ID do paciente.
+
+**Resposta — 200 OK:** retorna o objeto do dentista sugerido.
+
+**Resposta — 404 (paciente não encontrado):** `{"status": false, "code": 404, "message": "Paciente não encontrado.", "data": null}`
+
+**Resposta — 404 (nenhum dentista com vaga):** `{"status": false, "code": 404, "message": "Nenhum dentista com vagas disponíveis encontrado.", "data": null}`
+
+---
+
+#### `PATCH /api/pacientes/<id>/dentista`
+
+Vincula um dentista ao paciente, decrementando `vagas_disponiveis` do dentista escolhido. Suporta reassociação: se o paciente já tiver um dentista vinculado, a vaga do dentista anterior é restaurada antes do novo vínculo ser criado.
+
+**Parâmetros de path:** `id` — ID do paciente.
+
+**Payload de entrada:**
+
+```json
+{ "id_dentista": 1 }
+```
+
+**Resposta — 200 OK:** retorna o objeto do paciente atualizado com o novo dentista vinculado.
+
+**Resposta — 400 (campo ausente):** `{"status": false, "code": 400, "message": "Campo 'id_dentista' é obrigatório.", "data": null, "erro": []}`
+
+**Resposta — 400 (tipo inválido):** `{"status": false, "code": 400, "message": "Campo 'id_dentista' deve ser um inteiro positivo.", "data": null, "erro": []}`
+
+**Resposta — 409 (dentista sem vagas):** `{"status": false, "code": 409, "message": "Este dentista não possui vagas disponíveis.", "data": null}`
+
+**Resposta — 404 (paciente ou dentista não encontrado):** `{"status": false, "code": 404, "message": "Paciente não encontrado." | "Dentista não encontrado.", "data": null}`
+
+---
+
 ## 6. Endpoints planejados
 
-São **14 endpoints planejados** restantes: 3 de triagens (CRUD e aprovação/reprovação já implementados nos Prompts 09 e 10), 6 de pacientes, 4 de dentistas e 1 de endereços.
+São **3 endpoints planejados** restantes: 2 de consultas filtradas de triagens e 1 de endereços via ViaCEP.
 
-### Triagens (pendentes)
-
-| Método e Path | Finalidade | Etapa prevista |
-|---|---|---|
-| `POST /api/triagens/<id>/paciente` | Criar paciente a partir de triagem aprovada | Prompt 11 |
-| `GET /api/triagens/status/<status>` | Filtrar triagens por status | Prompt 13 |
-| `GET /api/triagens/prioridade/<prioridade>` | Filtrar triagens por prioridade | Prompt 13 |
-
-> Os dois endpoints de filtro (`/status/<status>` e `/prioridade/<prioridade>`) são **consultas filtradas**: realizam `SELECT ... WHERE` com parâmetro de path em vez de retornar todos os registros. Compartilham a lógica de `src/modulos/consultas.py`.
-
-### Pacientes
+### Triagens — Consultas filtradas (pendentes)
 
 | Método e Path | Finalidade | Etapa prevista |
 |---|---|---|
-| `GET /api/pacientes` | Listar todos os pacientes | Prompt 11 |
-| `GET /api/pacientes/<id>` | Buscar paciente por ID | Prompt 11 |
-| `GET /api/pacientes/sem-dentista` | Listar pacientes sem dentista vinculado | Prompt 11 |
-| `GET /api/pacientes/com-dentista` | Listar pacientes com dentista vinculado | Prompt 11 |
-| `GET /api/pacientes/<id>/sugestao-dentista` | Sugerir dentista compatível por proximidade | Prompt 12 |
-| `PATCH /api/pacientes/<id>/dentista` | Vincular dentista ao paciente | Prompt 12 |
+| `GET /api/triagens/status/<status>` | Filtrar triagens por status | Prompt 14 |
+| `GET /api/triagens/prioridade/<prioridade>` | Filtrar triagens por prioridade | Prompt 14 |
 
-> Os dois endpoints acima implementam a **associação paciente-dentista**: `sugestao-dentista` consulta o dentista mais próximo com vaga (por cidade, UF ou CEP) e `PATCH /dentista` confirma o vínculo decrementando a vaga. A lógica de matching reside em `src/modulos/associacao.py`.
-
-### Dentistas
-
-| Método e Path | Finalidade | Etapa prevista |
-|---|---|---|
-| `GET /api/dentistas` | Listar todos os dentistas | Prompt 12 |
-| `GET /api/dentistas/<id>` | Buscar dentista por ID | Prompt 12 |
-| `GET /api/dentistas/com-vagas` | Listar dentistas com vagas disponíveis | Prompt 12 |
-| `GET /api/dentistas/<id>/pacientes` | Listar pacientes de um dentista | Prompt 12 |
+> Esses dois endpoints realizam `SELECT ... WHERE` com parâmetro de path em vez de retornar todos os registros. A lógica reside em `src/modulos/consultas.py` (`consultar_triagens_por_status` e `consultar_triagens_por_prioridade`).
 
 ### Endereços
 
 | Método e Path | Finalidade | Etapa prevista |
 |---|---|---|
-| `GET /api/enderecos/cep/<cep>` | Consultar endereço via ViaCEP | Prompt 14 |
+| `GET /api/enderecos/cep/<cep>` | Consultar endereço via ViaCEP | Prompt 15 |
 
-> A numeração dos prompts é referência do roadmap e pode ser ajustada pela equipe conforme o ritmo de implementação. O importante é que cada endpoint está associado a uma etapa específica, não está solto.
+> A numeração dos prompts é referência do roadmap e pode ser ajustada conforme o ritmo de implementação.
 
 ---
 
@@ -419,7 +571,7 @@ Cada passo retorna JSON no padrão da seção 3: `{ "status", "code", "message",
 
 ## 9. Observações importantes
 
-- **Estado de construção:** 8 endpoints implementados — `GET /api/health` (Prompt 05), as 5 rotas CRUD de triagens (Prompt 09) e as 2 rotas de aprovação/reprovação (Prompt 10). Os 14 restantes são contrato planejado; requisições a eles retornarão 404 até serem implementados.
+- **Estado de construção:** 19 endpoints implementados — `GET /api/health`, as 5 rotas CRUD de triagens, as 2 rotas de aprovação/reprovação, `POST /api/triagens/<id>/paciente`, as 4 rotas de pacientes, as 4 rotas de dentistas e as 2 rotas de associação paciente-dentista. Os 3 restantes (`GET /api/triagens/status/<status>`, `GET /api/triagens/prioridade/<prioridade>` e `GET /api/enderecos/cep/<cep>`) são contrato planejado; requisições a eles retornarão 404 até serem implementados.
 - **Terminal legado:** `main.py` e `src/interface/menu.py` permanecem no repositório como referência durante a transição Sprint 4 → API. Não são o produto final da banca.
 - **Conexão Oracle:** depende de variáveis de ambiente configuradas antes de iniciar o servidor. Ver `.env.example` na raiz do projeto para os nomes das variáveis. Em deploy no Render, configurar no painel de *Environment Variables*.
 - **Credenciais:** nunca versionar o arquivo `.env`. Ele está no `.gitignore` e deve permanecer assim.

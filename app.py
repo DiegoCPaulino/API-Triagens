@@ -5,6 +5,9 @@ from flask_cors import CORS
 
 from src.apoio.utils import gerar_resposta
 from src.apoio.respostas_http import responder_http
+from src.rotas.triagens import bp_triagens
+from src.rotas.pacientes import bp_pacientes
+from src.rotas.dentistas import bp_dentistas
 
 app = Flask(__name__)
 
@@ -16,6 +19,10 @@ if _cors_origins == "*":
     CORS(app)
 else:
     CORS(app, resources={r"/api/*": {"origins": [o.strip() for o in _cors_origins.split(",")]}})
+
+app.register_blueprint(bp_triagens)
+app.register_blueprint(bp_pacientes)
+app.register_blueprint(bp_dentistas)
 
 
 @app.route("/api/health", methods=["GET"])
