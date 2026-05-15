@@ -7,7 +7,7 @@ Esta API é o back-end Flask do **Projeto Nora**, desenvolvido originalmente com
 O domínio é **triagem odontológica para adolescentes (11 a 17 anos)**, com o fluxo central: triagem → aprovação → paciente → dentista voluntário. A API é consumida por um front-end separado e expõe recursos REST com respostas JSON padronizadas.
 
 **Stack:** Python 3, Flask, flask-cors, oracledb, requests (ViaCEP).
-**Estado:** em construção incremental. No momento desta documentação, **21 endpoints** estão implementados: `GET /api/health`, as 5 rotas CRUD de triagens, as 2 rotas de aprovação/reprovação, `POST /api/triagens/<id>/paciente`, as 2 rotas de consulta filtrada de triagens (por status e por prioridade), as 4 rotas de pacientes, as 4 rotas de dentistas e as 2 rotas de associação paciente-dentista. O restante é contrato planejado.
+**Estado:** todos os **22 endpoints** do roadmap funcional estão implementados: `GET /api/health`, as 5 rotas CRUD de triagens, as 2 rotas de aprovação/reprovação, `POST /api/triagens/<id>/paciente`, as 2 rotas de consulta filtrada de triagens (por status e por prioridade), as 4 rotas de pacientes, as 4 rotas de dentistas, as 2 rotas de associação paciente-dentista e `GET /api/enderecos/cep/<cep>` (ViaCEP). Nenhum endpoint funcional pendente. As etapas seguintes são de hardening, testes manuais, integração front-end e deploy.
 
 ---
 
@@ -535,17 +535,51 @@ Retorna todas as triagens com a prioridade informada, ordenadas por `DATA_CRIACA
 
 ---
 
+### 5.8 Endereços — ViaCEP (Prompt 15)
+
+Blueprint: `src/rotas/enderecos.py` | Serviço: `src/servicos/api.py`
+
+#### `GET /api/enderecos/cep/<cep>`
+
+Consulta um endereço a partir de um CEP via API pública externa [ViaCEP](https://viacep.com.br). **Este endpoint requer conectividade com `viacep.com.br`** — não depende de Oracle.
+
+**Parâmetros de path:** `cep` — string com 8 dígitos numéricos. Máscaras com hífen são aceitas (ex.: `01310-100`) e normalizadas internamente; o serviço extrai os dígitos antes de consultar o ViaCEP.
+
+**Resposta — 200 OK (payload real capturado):**
+
+```json
+{
+  "status": true,
+  "code": 200,
+  "message": "CEP localizado com sucesso.",
+  "data": {
+    "cep": "01310100",
+    "logradouro": "Avenida Paulista",
+    "bairro": "Bela Vista",
+    "cidade": "São Paulo",
+    "uf": "SP",
+    "complemento": "de 612 a 1510 - lado par"
+  }
+}
+```
+
+**Resposta — 400 (formato inválido):** `{"status": false, "code": 400, "message": "CEP deve ter 8 dígitos numéricos.", "data": null}` — retornado para CEPs curtos, longos ou com letras.
+
+**Resposta — 404 (CEP não encontrado):** `{"status": false, "code": 404, "message": "CEP não encontrado. Verifique o número informado.", "data": null}` — retornado quando o ViaCEP responde com `{"erro": true}` (CEP no formato correto mas inexistente).
+
+**Resposta — 503 (ViaCEP indisponível):** `{"status": false, "code": 503, "message": "Sem conexão com a internet. Verifique sua rede.", "data": null}` — retornado em `ConnectionError`. Também usado para `RequestException` genérico.
+
+**Resposta — 504 (timeout):** `{"status": false, "code": 504, "message": "A consulta ao ViaCEP demorou demais. Tente novamente.", "data": null}` — timeout de 5 segundos configurado no serviço.
+
+**Resposta — 502 (resposta inválida do ViaCEP):** `{"status": false, "code": 502, "message": "Resposta inválida do ViaCEP.", "data": null}` — retornado quando o ViaCEP responde com JSON malformado.
+
+> **Observação:** o endpoint é read-only e não toca o banco Oracle. Para o Prompt 16 (hardening), verificar se o front-end prefere 502 ou 503 para indisponibilidade de rede — o serviço atual retorna 503 para `ConnectionError`, alinhado com o CLAUDE.md.
+
+---
+
 ## 6. Endpoints planejados
 
-Resta **1 endpoint planejado**: consulta de endereço via ViaCEP.
-
-### Endereços
-
-| Método e Path | Finalidade | Etapa prevista |
-|---|---|---|
-| `GET /api/enderecos/cep/<cep>` | Consultar endereço via ViaCEP | Prompt 15 |
-
-> A numeração dos prompts é referência do roadmap e pode ser ajustada conforme o ritmo de implementação.
+**Nenhum endpoint funcional pendente.** Todos os 22 endpoints do roadmap funcional estão implementados (Prompts 09-15). As etapas seguintes são: hardening de validações e padronização HTTP (Prompt 16), testes manuais com Postman/Insomnia (Prompt 17), integração com front-end (Prompt 18), deploy no Render (Prompts 19-20) e documentação final de banca (Prompt 21).
 
 ---
 
@@ -590,7 +624,7 @@ Cada passo retorna JSON no padrão da seção 3: `{ "status", "code", "message",
 
 ## 9. Observações importantes
 
-- **Estado de construção:** 21 endpoints implementados — `GET /api/health`, as 5 rotas CRUD de triagens, as 2 rotas de aprovação/reprovação, `POST /api/triagens/<id>/paciente`, as 2 rotas de consulta filtrada (`GET /api/triagens/status/<status>` e `GET /api/triagens/prioridade/<prioridade>`), as 4 rotas de pacientes, as 4 rotas de dentistas e as 2 rotas de associação paciente-dentista. O restante (`GET /api/enderecos/cep/<cep>`) é contrato planejado; requisições a ele retornarão 404 até ser implementado.
+- **Estado de construção:** todos os **22 endpoints** do roadmap funcional estão implementados — `GET /api/health`, as 5 rotas CRUD de triagens, as 2 rotas de aprovação/reprovação, `POST /api/triagens/<id>/paciente`, as 2 rotas de consulta filtrada (por status e prioridade), as 4 rotas de pacientes, as 4 rotas de dentistas, as 2 rotas de associação paciente-dentista e `GET /api/enderecos/cep/<cep>` (ViaCEP). Nenhum endpoint pendente.
 - **Terminal legado:** `main.py` e `src/interface/menu.py` permanecem no repositório como referência durante a transição Sprint 4 → API. Não são o produto final da banca.
 - **Conexão Oracle:** depende de variáveis de ambiente configuradas antes de iniciar o servidor. Ver `.env.example` na raiz do projeto para os nomes das variáveis. Em deploy no Render, configurar no painel de *Environment Variables*.
 - **Credenciais:** nunca versionar o arquivo `.env`. Ele está no `.gitignore` e deve permanecer assim.

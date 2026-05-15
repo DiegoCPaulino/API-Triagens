@@ -8,6 +8,7 @@ from src.apoio.respostas_http import responder_http
 from src.rotas.triagens import bp_triagens
 from src.rotas.pacientes import bp_pacientes
 from src.rotas.dentistas import bp_dentistas
+from src.rotas.enderecos import bp_enderecos
 
 app = Flask(__name__)
 
@@ -23,6 +24,7 @@ else:
 app.register_blueprint(bp_triagens)
 app.register_blueprint(bp_pacientes)
 app.register_blueprint(bp_dentistas)
+app.register_blueprint(bp_enderecos)
 
 
 @app.route("/api/health", methods=["GET"])
