@@ -7,7 +7,7 @@ Esta API é o back-end Flask do **Projeto Nora**, desenvolvido originalmente com
 O domínio é **triagem odontológica para adolescentes (11 a 17 anos)**, com o fluxo central: triagem → aprovação → paciente → dentista voluntário. A API é consumida por um front-end separado e expõe recursos REST com respostas JSON padronizadas.
 
 **Stack:** Python 3, Flask, flask-cors, oracledb, requests (ViaCEP).
-**Estado:** em construção incremental. No momento desta documentação, **19 endpoints** estão implementados: `GET /api/health`, as 5 rotas CRUD de triagens, as 2 rotas de aprovação/reprovação, `POST /api/triagens/<id>/paciente`, as 4 rotas de pacientes, as 4 rotas de dentistas e as 2 rotas de associação paciente-dentista. Os 3 restantes são contrato planejado.
+**Estado:** em construção incremental. No momento desta documentação, **21 endpoints** estão implementados: `GET /api/health`, as 5 rotas CRUD de triagens, as 2 rotas de aprovação/reprovação, `POST /api/triagens/<id>/paciente`, as 2 rotas de consulta filtrada de triagens (por status e por prioridade), as 4 rotas de pacientes, as 4 rotas de dentistas e as 2 rotas de associação paciente-dentista. O restante é contrato planejado.
 
 ---
 
@@ -507,18 +507,37 @@ Vincula um dentista ao paciente, decrementando `vagas_disponiveis` do dentista e
 
 ---
 
+### 5.7 Triagens — Consultas Filtradas (Prompt 14)
+
+Blueprint: `src/rotas/triagens.py` | Módulo: `src/modulos/consultas.py`
+
+#### `GET /api/triagens/status/<status>`
+
+Retorna todas as triagens com o status informado, ordenadas por `DATA_CRIACAO DESC`.
+
+**Parâmetros de path:** `status` — um dos valores aceitos: `em análise`, `aprovada`, `reprovada`. O valor deve ser enviado URL-encoded quando contiver caracteres especiais (ex.: `em%20an%C3%A1lise`). Flask decodifica automaticamente.
+
+**Resposta — 200 OK:** `data` é um array de objetos triagem (pode estar vazio se nenhuma triagem tiver aquele status).
+
+**Resposta — 400 (status inválido):** `{"status": false, "code": 400, "message": "Status inválido. Use: em análise, aprovada ou reprovada.", "data": null}`
+
+---
+
+#### `GET /api/triagens/prioridade/<prioridade>`
+
+Retorna todas as triagens com a prioridade informada, ordenadas por `DATA_CRIACAO DESC`.
+
+**Parâmetros de path:** `prioridade` — um dos valores aceitos: `baixa`, `média`, `alta`. O valor deve ser enviado URL-encoded quando contiver acento (ex.: `m%C3%A9dia`). Flask decodifica automaticamente.
+
+**Resposta — 200 OK:** `data` é um array de objetos triagem (pode estar vazio).
+
+**Resposta — 400 (prioridade inválida):** `{"status": false, "code": 400, "message": "Prioridade inválida. Use: baixa, média ou alta.", "data": null}`
+
+---
+
 ## 6. Endpoints planejados
 
-São **3 endpoints planejados** restantes: 2 de consultas filtradas de triagens e 1 de endereços via ViaCEP.
-
-### Triagens — Consultas filtradas (pendentes)
-
-| Método e Path | Finalidade | Etapa prevista |
-|---|---|---|
-| `GET /api/triagens/status/<status>` | Filtrar triagens por status | Prompt 14 |
-| `GET /api/triagens/prioridade/<prioridade>` | Filtrar triagens por prioridade | Prompt 14 |
-
-> Esses dois endpoints realizam `SELECT ... WHERE` com parâmetro de path em vez de retornar todos os registros. A lógica reside em `src/modulos/consultas.py` (`consultar_triagens_por_status` e `consultar_triagens_por_prioridade`).
+Resta **1 endpoint planejado**: consulta de endereço via ViaCEP.
 
 ### Endereços
 
@@ -571,7 +590,7 @@ Cada passo retorna JSON no padrão da seção 3: `{ "status", "code", "message",
 
 ## 9. Observações importantes
 
-- **Estado de construção:** 19 endpoints implementados — `GET /api/health`, as 5 rotas CRUD de triagens, as 2 rotas de aprovação/reprovação, `POST /api/triagens/<id>/paciente`, as 4 rotas de pacientes, as 4 rotas de dentistas e as 2 rotas de associação paciente-dentista. Os 3 restantes (`GET /api/triagens/status/<status>`, `GET /api/triagens/prioridade/<prioridade>` e `GET /api/enderecos/cep/<cep>`) são contrato planejado; requisições a eles retornarão 404 até serem implementados.
+- **Estado de construção:** 21 endpoints implementados — `GET /api/health`, as 5 rotas CRUD de triagens, as 2 rotas de aprovação/reprovação, `POST /api/triagens/<id>/paciente`, as 2 rotas de consulta filtrada (`GET /api/triagens/status/<status>` e `GET /api/triagens/prioridade/<prioridade>`), as 4 rotas de pacientes, as 4 rotas de dentistas e as 2 rotas de associação paciente-dentista. O restante (`GET /api/enderecos/cep/<cep>`) é contrato planejado; requisições a ele retornarão 404 até ser implementado.
 - **Terminal legado:** `main.py` e `src/interface/menu.py` permanecem no repositório como referência durante a transição Sprint 4 → API. Não são o produto final da banca.
 - **Conexão Oracle:** depende de variáveis de ambiente configuradas antes de iniciar o servidor. Ver `.env.example` na raiz do projeto para os nomes das variáveis. Em deploy no Render, configurar no painel de *Environment Variables*.
 - **Credenciais:** nunca versionar o arquivo `.env`. Ele está no `.gitignore` e deve permanecer assim.

@@ -5,6 +5,7 @@ from src.modulos.triagens import (
     criar_triagem, atualizar_triagem, excluir_triagem,
     aprovar_triagem, reprovar_triagem,
 )
+from src.modulos.consultas import consultar_triagens_por_status, consultar_triagens_por_prioridade
 from src.modulos.pacientes import criar_paciente_a_partir_de_triagem
 from src.apoio.respostas_http import responder_http
 from src.apoio.utils import gerar_resposta
@@ -20,6 +21,16 @@ def listar():
 @bp_triagens.route("/<int:id_triagem>", methods=["GET"])
 def buscar(id_triagem):
     return responder_http(buscar_triagem_por_id(id_triagem))
+
+
+@bp_triagens.route("/status/<string:status>", methods=["GET"])
+def listar_por_status(status):
+    return responder_http(consultar_triagens_por_status(status))
+
+
+@bp_triagens.route("/prioridade/<string:prioridade>", methods=["GET"])
+def listar_por_prioridade(prioridade):
+    return responder_http(consultar_triagens_por_prioridade(prioridade))
 
 
 @bp_triagens.route("/", methods=["POST"])
