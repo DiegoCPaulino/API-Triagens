@@ -1,7 +1,7 @@
 import oracledb
 from src.banco.database import obter_conexao
 from src.apoio.utils import gerar_resposta, normalizar_texto
-from src.apoio.validators import validar_id_numerico
+from src.apoio.validators import validar_id_numerico, validar_dados_complementares_paciente
 
 
 def _row_para_dict(row, colunas) -> dict:
@@ -19,6 +19,10 @@ def criar_paciente_a_partir_de_triagem(id_triagem, dados_complementares: dict) -
     resultado_id = validar_id_numerico(id_triagem)
     if not resultado_id["status"]:
         return resultado_id
+
+    resultado_val = validar_dados_complementares_paciente(dados_complementares)
+    if not resultado_val["status"]:
+        return resultado_val
 
     resultado_triagem = buscar_triagem_por_id(id_triagem)
     if not resultado_triagem["status"]:
@@ -73,7 +77,10 @@ def criar_paciente_a_partir_de_triagem(id_triagem, dados_complementares: dict) -
                 )
                 id_gerado = int(cur.bindvars["id_out"].getvalue()[0])
                 conexao.commit()
-        return buscar_paciente_por_id(id_gerado)
+        resultado = buscar_paciente_por_id(id_gerado)
+        if resultado["status"]:
+            resultado["code"] = 201
+        return resultado
     except oracledb.DatabaseError as exc:
         try:
             conexao.rollback()

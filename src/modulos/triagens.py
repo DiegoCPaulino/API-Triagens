@@ -68,7 +68,10 @@ def criar_triagem(dados: dict) -> dict:
                 id_gerado = int(cur.bindvars["id_out"].getvalue()[0])
                 conexao.commit()
 
-        return buscar_triagem_por_id(id_gerado)
+        resultado = buscar_triagem_por_id(id_gerado)
+        if resultado["status"]:
+            resultado["code"] = 201
+        return resultado
 
     except oracledb.DatabaseError as exc:
         (erro,) = exc.args

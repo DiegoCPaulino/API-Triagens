@@ -200,6 +200,31 @@ def validar_dados_triagem(dados: dict) -> dict:
     return gerar_resposta(True, 200, "Dados da triagem válidos.")
 
 
+def validar_dados_complementares_paciente(dados: dict) -> dict:
+    if not isinstance(dados, dict):
+        return gerar_resposta(False, 400, "Dados complementares do paciente são inválidos.")
+    erros = []
+    campos_func = [
+        ("data_nascimento", validar_data_nascimento),
+        ("rg", validar_rg),
+        ("telefone", validar_telefone),
+        ("cep", validar_cep),
+        ("numero", validar_numero_endereco),
+        ("uf", validar_uf),
+    ]
+    for campo, func in campos_func:
+        r = func(dados.get(campo))
+        if not r["status"]:
+            erros.append({"campo": campo, "erro": r["message"]})
+    for campo in ("logradouro", "bairro", "cidade"):
+        valor = normalizar_texto(str(dados.get(campo, "") or ""))
+        if not valor:
+            erros.append({"campo": campo, "erro": f"{campo.capitalize()} é obrigatório(a)."})
+    if erros:
+        return _resposta_erro_validacao("Existem erros de validação nos dados complementares do paciente.", erros)
+    return gerar_resposta(True, 200, "Dados complementares válidos.")
+
+
 def validar_dados_atualizacao(dados: dict) -> dict:
     if not isinstance(dados, dict):
         return gerar_resposta(False, 400, "Dados de atualização são inválidos.")
