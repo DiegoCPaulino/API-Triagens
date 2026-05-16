@@ -19,5 +19,6 @@ exports/*.json
 data/
 get-pip.py
 nora_sprint4.zip
+*.zip
 
 CLAUDE.md
