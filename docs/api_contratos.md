@@ -6,8 +6,10 @@ Esta API é o back-end Flask do **Projeto Nora**, desenvolvido originalmente com
 
 O domínio é **triagem odontológica para adolescentes (11 a 17 anos)**, com o fluxo central: triagem → aprovação → paciente → dentista voluntário. A API é consumida por um front-end separado e expõe recursos REST com respostas JSON padronizadas.
 
-**Stack:** Python 3, Flask, flask-cors, oracledb, requests (ViaCEP).
-**Estado:** todos os **22 endpoints** do roadmap funcional estão implementados: `GET /api/health`, as 5 rotas CRUD de triagens, as 2 rotas de aprovação/reprovação, `POST /api/triagens/<id>/paciente`, as 2 rotas de consulta filtrada de triagens (por status e por prioridade), as 4 rotas de pacientes, as 4 rotas de dentistas, as 2 rotas de associação paciente-dentista e `GET /api/enderecos/cep/<cep>` (ViaCEP). Nenhum endpoint funcional pendente. As etapas seguintes são de hardening, testes manuais, integração front-end e deploy.
+**Stack:** Python 3, Flask, flask-cors, gunicorn, oracledb, requests, ViaCEP, Nominatim/OpenStreetMap (geocodificação), Haversine (stdlib `math`).
+**Estado:** todos os **22 endpoints** do roadmap funcional estão implementados e o endpoint `GET /api/pacientes/<id>/sugestao-dentista` foi recalibrado para usar geocodificação via Nominatim/OpenStreetMap + cálculo de distância por Haversine com fallback obrigatório por cidade/UF/CEP. As etapas seguintes são de testes manuais, integração front-end e deploy.
+
+**Atribuição de geocodificação:** dados de geocodificação © OpenStreetMap contributors, via Nominatim. Uso conforme os [termos de uso públicos do Nominatim](https://nominatim.org/release-docs/latest/api/Overview/).
 
 ---
 
@@ -217,9 +219,7 @@ Cria nova triagem. A triagem nasce com `status = "em análise"` (atribuído pelo
 
 **Campo opcional:** `observacoes` (string, até 300 caracteres).
 
-**Resposta — 200 OK:** retorna o objeto da triagem criada (mesmo formato do `GET /<id>`).
-
-> **Nota:** o módulo `criar_triagem()` retorna internamente o resultado de `buscar_triagem_por_id()`, que produz `code: 200`. Por essa razão, a criação bem-sucedida retorna 200 em vez de 201. Isso é um comportamento conhecido do módulo da Sprint 4, preservado intencionalmente nesta etapa.
+**Resposta — 201 Created:** retorna o objeto da triagem criada (mesmo formato do `GET /<id>`).
 
 **Resposta — 400 (payload ausente):** `{"status": false, "code": 400, "message": "Payload JSON ausente ou inválido.", "data": null, "erro": []}`
 
@@ -361,7 +361,7 @@ Cria um paciente a partir de uma triagem já aprovada. A rota reside no blueprin
 
 `complemento` é opcional. `nome_completo`, `cpf` e `idade` são herdados da triagem e não devem ser enviados no payload.
 
-**Resposta — 200 OK:** retorna o objeto do paciente criado (mesmo formato de `GET /api/pacientes/<id>`).
+**Resposta — 201 Created:** retorna o objeto do paciente criado (mesmo formato de `GET /api/pacientes/<id>`).
 
 **Resposta — 409 (triagem não aprovada):** `{"status": false, "code": 409, "message": "A triagem precisa estar com status 'aprovada' para criar um paciente.", "data": null}`
 
@@ -471,15 +471,141 @@ Blueprint: `src/rotas/pacientes.py` | Módulos: `src/modulos/associacao.py` e `s
 
 #### `GET /api/pacientes/<id>/sugestao-dentista`
 
-Sugere o dentista mais compatível com o paciente com base em localização e disponibilidade de vagas. O algoritmo prioriza: mesma cidade → mesma UF → qualquer dentista com vaga. Em caso de empate, usa a menor diferença numérica entre CEPs.
+Sugere o dentista mais adequado para o paciente considerando: disponibilidade de vagas, pré-filtragem por cidade/UF/CEP, geocodificação via **Nominatim/OpenStreetMap** e cálculo de distância aproximada em linha reta via **Haversine**. Quando a geocodificação está indisponível ou os dados de endereço são insuficientes, aplica **fallback obrigatório** por cidade, UF ou CEP aproximado.
 
 **Parâmetros de path:** `id` — ID do paciente.
 
-**Resposta — 200 OK:** retorna o objeto do dentista sugerido.
+> **Observação:** a distância retornada é **aproximada em linha reta**, calculada com a fórmula de Haversine sobre coordenadas obtidas do Nominatim/OpenStreetMap. Não considera rota viária, trânsito ou tempo de deslocamento. Quando Nominatim está indisponível ou o endereço é insuficiente, o sistema aplica fallback por cidade/UF/CEP e retorna `distancia_km: null`.
+>
+> Dados de geocodificação: © OpenStreetMap contributors, via Nominatim.
+
+##### Campos da resposta
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `paciente` | object | Resumo do paciente (id, nome, cidade, uf, cep) |
+| `dentista_sugerido` | object \| null | Dentista sugerido; `null` quando não há nenhum disponível |
+| `distancia_km` | float \| null | Distância aproximada em km (linha reta); `null` no fallback |
+| `metodo_calculo` | string | `"nominatim_haversine"`, `"cep_fallback"` ou `"sem_dentista_disponivel"` |
+| `criterio_fallback` | string \| null | `null` no cálculo real; `"mesma_cidade"`, `"mesma_uf"`, `"cep_aproximado"` ou `"qualquer_com_vaga"` no fallback |
+| `observacao` | string | Texto explicando o método e seus limites |
+| `diagnostico_calculo` | object | Diagnóstico interno: flags de uso do Nominatim, Haversine, fallback e motivo |
+
+##### Exemplo A — Sucesso com Nominatim + Haversine
+
+```json
+{
+  "status": true,
+  "code": 200,
+  "message": "Dentista sugerido com sucesso.",
+  "data": {
+    "paciente": {
+      "id_paciente": 12,
+      "nome": "João Silva Pereira",
+      "cidade": "São Paulo",
+      "uf": "SP",
+      "cep": "01001000"
+    },
+    "dentista_sugerido": {
+      "id_dentista": 3,
+      "nome": "Dra. Ana Paula Ferreira",
+      "especialidade": "Ortodontia",
+      "cidade": "São Paulo",
+      "uf": "SP",
+      "cep": "01310100",
+      "vagas_disponiveis": 4
+    },
+    "distancia_km": 4.27,
+    "metodo_calculo": "nominatim_haversine",
+    "criterio_fallback": null,
+    "observacao": "Distância aproximada em linha reta via OpenStreetMap/Nominatim. Não considera rota viária, trânsito ou tempo de deslocamento.",
+    "diagnostico_calculo": {
+      "nominatim_utilizado": true,
+      "haversine_utilizado": true,
+      "fallback_utilizado": false,
+      "paciente_geocodificado": true,
+      "candidatos_geocodificados": 2,
+      "total_candidatos": 5,
+      "motivo_fallback": null
+    }
+  }
+}
+```
+
+##### Exemplo B — Fallback por cidade (Nominatim indisponível)
+
+```json
+{
+  "status": true,
+  "code": 200,
+  "message": "Dentista sugerido por fallback de proximidade.",
+  "data": {
+    "paciente": {
+      "id_paciente": 12,
+      "nome": "João Silva Pereira",
+      "cidade": "São Paulo",
+      "uf": "SP",
+      "cep": "01001000"
+    },
+    "dentista_sugerido": {
+      "id_dentista": 3,
+      "nome": "Dra. Ana Paula Ferreira",
+      "especialidade": "Ortodontia",
+      "cidade": "São Paulo",
+      "uf": "SP",
+      "cep": "01310100",
+      "vagas_disponiveis": 4
+    },
+    "distancia_km": null,
+    "metodo_calculo": "cep_fallback",
+    "criterio_fallback": "mesma_cidade",
+    "observacao": "Geocodificação indisponível; sugestão feita por cidade, UF e aproximação de CEP. Distância real não calculada.",
+    "diagnostico_calculo": {
+      "nominatim_utilizado": false,
+      "haversine_utilizado": false,
+      "fallback_utilizado": true,
+      "paciente_geocodificado": false,
+      "candidatos_geocodificados": 0,
+      "total_candidatos": 3,
+      "motivo_fallback": "paciente_nao_geocodificado"
+    }
+  }
+}
+```
+
+##### Exemplo C — Nenhum dentista disponível
+
+```json
+{
+  "status": false,
+  "code": 404,
+  "message": "Nenhum dentista com vagas disponíveis encontrado.",
+  "data": {
+    "paciente": {
+      "id_paciente": 12,
+      "nome": "João Silva Pereira",
+      "cidade": "São Paulo",
+      "uf": "SP",
+      "cep": "01001000"
+    },
+    "dentista_sugerido": null,
+    "distancia_km": null,
+    "metodo_calculo": "sem_dentista_disponivel",
+    "criterio_fallback": null,
+    "observacao": "Nenhum dentista com vagas disponíveis foi encontrado.",
+    "diagnostico_calculo": {
+      "fallback_utilizado": false,
+      "motivo_fallback": null
+    }
+  }
+}
+```
 
 **Resposta — 404 (paciente não encontrado):** `{"status": false, "code": 404, "message": "Paciente não encontrado.", "data": null}`
 
-**Resposta — 404 (nenhum dentista com vaga):** `{"status": false, "code": 404, "message": "Nenhum dentista com vagas disponíveis encontrado.", "data": null}`
+**Resposta — 404 (nenhum dentista com vaga):** retorna 404 com `data.metodo_calculo: "sem_dentista_disponivel"` — ver Exemplo C acima.
+
+> **Importante:** falha do Nominatim (timeout, erro HTTP, resposta vazia, sem internet) **nunca retorna HTTP 500** quando há candidato disponível — o sistema aplica o fallback e retorna 200. Apenas a ausência total de dentistas com vaga retorna 404.
 
 ---
 
