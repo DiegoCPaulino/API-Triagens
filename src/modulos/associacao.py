@@ -56,10 +56,21 @@ def sugerir_dentista_para_paciente(id_paciente) -> dict:
             with conexao.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT ID_PACIENTE, NOME_COMPLETO, LOGRADOURO, NUMERO, BAIRRO,
-                           CIDADE, UF, CEP
-                    FROM TB_PACIENTE
-                    WHERE ID_PACIENTE = :id
+                    SELECT
+                        PAC.ID_PACIENTE,
+                        P.NOME_COMPLETO,
+                        E.LOGRADOURO,
+                        E.NUMERO,
+                        E.BAIRRO,
+                        E.CIDADE,
+                        E.UF,
+                        E.CEP
+                    FROM TB_PACIENTE PAC
+                    JOIN TB_PESSOA P
+                        ON P.ID_PESSOA = PAC.ID_PESSOA
+                    JOIN TB_ENDERECO E
+                        ON E.ID_ENDERECO = P.ID_ENDERECO
+                    WHERE PAC.ID_PACIENTE = :id
                     """,
                     {"id": resultado_id["data"]}
                 )
@@ -80,13 +91,25 @@ def sugerir_dentista_para_paciente(id_paciente) -> dict:
 
                 cur.execute(
                     """
-                    SELECT ID_DENTISTA, NOME, ESPECIALIDADE, CEP,
-                           LOGRADOURO, NUMERO, BAIRRO, CIDADE, UF, VAGAS_DISPONIVEIS
-                    FROM TB_DENTISTA
-                    WHERE VAGAS_DISPONIVEIS > 0
-                    ORDER BY ID_DENTISTA
+                    SELECT
+                        D.ID_DENTISTA,
+                        D.NOME,
+                        '' AS ESPECIALIDADE,
+                        E.CEP,
+                        E.LOGRADOURO,
+                        E.NUMERO,
+                        E.BAIRRO,
+                        E.CIDADE,
+                        E.UF,
+                        (D.CAP_MENSAL - D.ATIVOS) AS VAGAS_DISPONIVEIS
+                    FROM TB_DENTISTA D
+                    JOIN TB_ENDERECO E
+                        ON E.ID_ENDERECO = D.ID_ENDERECO
+                    WHERE UPPER(D.STTS_DENT) = 'ATIVO'
+                        AND D.ATIVOS < D.CAP_MENSAL
+                    ORDER BY D.ID_DENTISTA
                     """
-                )
+                    )
                 rows_dent = cur.fetchall()
 
     except oracledb.DatabaseError as exc:
