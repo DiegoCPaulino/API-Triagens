@@ -9,6 +9,8 @@ from src.modulos.associacao import sugerir_dentista_para_paciente
 from src.apoio.respostas_http import responder_http
 from src.apoio.utils import gerar_resposta
 
+# Domínio: paciente criado a partir de triagem aprovada — consultas, vínculo com dentista
+# e sugestão geográfica de dentista (Nominatim + Haversine com fallback por CEP).
 bp_pacientes = Blueprint("pacientes", __name__, url_prefix="/api/pacientes")
 
 

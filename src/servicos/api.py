@@ -4,6 +4,8 @@ from src.apoio.validators import validar_cep
 
 
 def consultar_cep(cep: str) -> dict:
+    # ViaCEP é usado para complementar endereço (logradouro, bairro, cidade, UF) e apoiar
+    # o fallback de sugestão de dentista. Não calcula distância — apenas enriquece o dado.
     resultado_val = validar_cep(cep)
     if not resultado_val["status"]:
         return resultado_val

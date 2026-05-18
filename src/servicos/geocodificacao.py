@@ -2,8 +2,10 @@ import math
 import requests
 
 _NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+# User-Agent identificável é obrigatório pela política de uso público do Nominatim.
+# Usar o padrão de bibliotecas HTTP (python-requests/x.y) viola os termos e pode gerar bloqueio.
 _USER_AGENT = "ProjetoNoraFIAP/1.0 (academico-fiap@projeto-nora.local)"
-_TIMEOUT = 5
+_TIMEOUT = 5        # segundos; evita que falha do Nominatim trave o endpoint de sugestão
 _RAIO_TERRA_KM = 6371.0
 
 
@@ -58,7 +60,8 @@ def geocodificar_endereco(endereco_str: str) -> dict:
 
 
 def calcular_distancia_km(lat1, lon1, lat2, lon2) -> float:
-    """Distância aproximada em linha reta pelo Haversine. Não representa rota viária."""
+    """Distância aproximada em linha reta (fórmula de Haversine). Não representa rota viária,
+    trânsito ou tempo de deslocamento — apenas a menor distância geodésica entre dois pontos."""
     for val in (lat1, lon1, lat2, lon2):
         if val is None or not isinstance(val, (int, float)) or not math.isfinite(val):
             raise ValueError("Coordenadas inválidas")

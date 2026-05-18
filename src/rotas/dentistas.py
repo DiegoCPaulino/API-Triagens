@@ -6,6 +6,7 @@ from src.modulos.dentistas import (
 )
 from src.apoio.respostas_http import responder_http
 
+# Domínio: dentistas voluntários — consultas e listagem dos pacientes atendidos.
 bp_dentistas = Blueprint("dentistas", __name__, url_prefix="/api/dentistas")
 
 

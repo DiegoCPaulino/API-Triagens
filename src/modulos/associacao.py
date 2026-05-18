@@ -117,6 +117,8 @@ def _executar_sugestao(origem_info: dict, rows_dent: list) -> dict:
     geocodificados = []
     if geo_pac["sucesso"]:
         for cand in candidatos:
+            # Pausa de 1 segundo entre chamadas ao Nominatim para respeitar o limite de
+            # uso do serviço público (1 req/s). Necessário para evitar bloqueio por abuso.
             end_cand = montar_endereco_textual(
                 cand["logradouro"], cand["numero"], cand["bairro"],
                 cand["cidade"], cand["uf"], cand["cep"]
@@ -167,6 +169,9 @@ def _executar_sugestao(origem_info: dict, rows_dent: list) -> dict:
         return gerar_resposta(True, 200, "Dentista sugerido com sucesso.", data)
 
     # --- Fallback ---
+    # Acionado quando: Nominatim offline, timeout, resposta vazia, lat/lon inválidos,
+    # ou nenhum candidato geocodificado com sucesso. O sistema nunca retorna 500 por
+    # falha de geocodificação — a sugestão por cidade/UF/CEP garante a continuidade.
     motivo = "paciente_nao_geocodificado" if not geo_pac["sucesso"] else "candidatos_nao_geocodificados"
     melhor_cand = candidatos[0]
     dentista_out = {

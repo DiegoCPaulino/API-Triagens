@@ -11,6 +11,8 @@ from src.modulos.associacao import sugerir_dentista_para_triagem
 from src.apoio.respostas_http import responder_http
 from src.apoio.utils import gerar_resposta
 
+# Domínio: triagem odontológica — criação, avaliação (aprovar/reprovar),
+# criação de paciente vinculado e sugestão de dentista por triagem.
 bp_triagens = Blueprint("triagens", __name__, url_prefix="/api/triagens")
 
 
