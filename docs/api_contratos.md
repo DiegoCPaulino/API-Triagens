@@ -2,12 +2,10 @@
 
 ## 1. Visão geral
 
-Esta API é o back-end Flask do **Projeto Nora**, desenvolvido originalmente como Sprint 4 Python da disciplina *Computational Thinking Using Python* da FIAP e evoluído incrementalmente para o **back-end do Projeto Banca FIAP**.
-
 O domínio é **triagem odontológica para adolescentes (11 a 17 anos)**, com o fluxo central: triagem → aprovação → paciente → dentista voluntário. A API é consumida por um front-end separado e expõe recursos REST com respostas JSON padronizadas.
 
 **Stack:** Python 3, Flask, flask-cors, gunicorn, oracledb, requests, ViaCEP, Nominatim/OpenStreetMap (geocodificação), Haversine (stdlib `math`).
-**Estado:** todos os **22 endpoints** do roadmap funcional estão implementados e o endpoint `GET /api/pacientes/<id>/sugestao-dentista` foi recalibrado para usar geocodificação via Nominatim/OpenStreetMap + cálculo de distância por Haversine com fallback obrigatório por cidade/UF/CEP. As etapas seguintes são de testes manuais, integração front-end e deploy.
+**Estado:** todos os endpoints estão implementados e em produção. A sugestão de dentista usa geocodificação via Nominatim/OpenStreetMap + cálculo de distância por Haversine com fallback obrigatório por cidade/UF/CEP. Disponível tanto por paciente (`GET /api/pacientes/<id>/sugestao-dentista`) quanto por triagem (`GET /api/triagens/<id>/sugestao-dentista`).
 
 **Atribuição de geocodificação:** dados de geocodificação © OpenStreetMap contributors, via Nominatim. Uso conforme os [termos de uso públicos do Nominatim](https://nominatim.org/release-docs/latest/api/Overview/).
 
@@ -156,7 +154,7 @@ Os três handlers abaixo são registrados no `app.py` e se aplicam a qualquer ro
 
 ---
 
-### 5.1 Triagens — CRUD básico (Prompt 09)
+### 5.1 Triagens — CRUD básico
 
 Blueprint: `src/rotas/triagens.py` | Módulo: `src/modulos/triagens.py` | Registrado em: `app.py`
 
@@ -187,8 +185,8 @@ Busca triagem por ID inteiro. O conversor `<int:id_triagem>` garante 404 automá
     "descricao_caso": "Adolescente com dor de dente persistente e necessidade de avaliacao odontologica urgente para triagem.",
     "id_triagem": 142,
     "idade": 15,
-    "nome_completo": "Triagem de Teste Prompt Nove",
-    "observacoes": "Registro sintetico criado pelo Prompt 09",
+    "nome_completo": "Lucas Ferreira dos Santos",
+    "observacoes": "Triagem de demonstração.",
     "prioridade": "alta",
     "status": "em análise"
   },
@@ -271,7 +269,7 @@ Exclui uma triagem. Bloqueado se já houver paciente vinculado.
 
 ---
 
-### 5.2 Triagens — Aprovação e Reprovação (Prompt 10)
+### 5.2 Triagens — Aprovação e Reprovação
 
 Blueprint: `src/rotas/triagens.py` | Módulo: `src/modulos/triagens.py`
 
@@ -332,7 +330,7 @@ Reprova uma triagem. Só é permitido se o `status` atual for `"em análise"`.
 
 ---
 
-### 5.3 Triagens — Criar Paciente (Lote 11-13)
+### 5.3 Triagens — Criar Paciente
 
 Blueprint: `src/rotas/triagens.py` | Módulo: `src/modulos/pacientes.py`
 
@@ -371,7 +369,7 @@ Cria um paciente a partir de uma triagem já aprovada. A rota reside no blueprin
 
 ---
 
-### 5.4 Pacientes (Lote 11-13)
+### 5.4 Pacientes
 
 Blueprint: `src/rotas/pacientes.py` | Módulo: `src/modulos/pacientes.py`
 
@@ -417,7 +415,7 @@ Busca paciente por ID. O conversor `<int:id_paciente>` garante 404 automático p
 
 ---
 
-### 5.5 Dentistas (Lote 11-13)
+### 5.5 Dentistas
 
 Blueprint: `src/rotas/dentistas.py` | Módulo: `src/modulos/dentistas.py`
 
@@ -465,7 +463,7 @@ Retorna todos os pacientes atualmente vinculados a um dentista específico.
 
 ---
 
-### 5.6 Associação Paciente-Dentista (Lote 11-13)
+### 5.6 Associação Paciente-Dentista
 
 Blueprint: `src/rotas/pacientes.py` | Módulos: `src/modulos/associacao.py` e `src/modulos/pacientes.py`
 
@@ -759,7 +757,7 @@ Vincula um dentista ao paciente, decrementando `vagas_disponiveis` do dentista e
 
 ---
 
-### 5.7 Triagens — Consultas Filtradas (Prompt 14)
+### 5.7 Triagens — Consultas Filtradas
 
 Blueprint: `src/rotas/triagens.py` | Módulo: `src/modulos/consultas.py`
 
@@ -787,7 +785,7 @@ Retorna todas as triagens com a prioridade informada, ordenadas por `DATA_CRIACA
 
 ---
 
-### 5.8 Endereços — ViaCEP (Prompt 15)
+### 5.8 Endereços — ViaCEP
 
 Blueprint: `src/rotas/enderecos.py` | Serviço: `src/servicos/api.py`
 
@@ -825,13 +823,13 @@ Consulta um endereço a partir de um CEP via API pública externa [ViaCEP](https
 
 **Resposta — 502 (resposta inválida do ViaCEP):** `{"status": false, "code": 502, "message": "Resposta inválida do ViaCEP.", "data": null}` — retornado quando o ViaCEP responde com JSON malformado.
 
-> **Observação:** o endpoint é read-only e não toca o banco Oracle. Para o Prompt 16 (hardening), verificar se o front-end prefere 502 ou 503 para indisponibilidade de rede — o serviço atual retorna 503 para `ConnectionError`, alinhado com o CLAUDE.md.
+> **Observação:** o endpoint é read-only e não toca o banco Oracle. Retorna 503 para `ConnectionError` (sem internet), 504 para timeout e 502 para resposta malformada do ViaCEP.
 
 ---
 
-## 6. Endpoints planejados
+## 6. Cobertura de endpoints
 
-**Nenhum endpoint funcional pendente.** Todos os 22 endpoints do roadmap funcional estão implementados (Prompts 09-15). As etapas seguintes são: hardening de validações e padronização HTTP (Prompt 16), testes manuais com Postman/Insomnia (Prompt 17), integração com front-end (Prompt 18), deploy no Render (Prompts 19-20) e documentação final de banca (Prompt 21).
+Todos os endpoints estão implementados e em produção. Nenhum endpoint pendente.
 
 ---
 
