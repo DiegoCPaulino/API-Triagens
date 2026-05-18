@@ -7,6 +7,7 @@ from src.modulos.triagens import (
 )
 from src.modulos.consultas import consultar_triagens_por_status, consultar_triagens_por_prioridade
 from src.modulos.pacientes import criar_paciente_a_partir_de_triagem
+from src.modulos.associacao import sugerir_dentista_para_triagem
 from src.apoio.respostas_http import responder_http
 from src.apoio.utils import gerar_resposta
 
@@ -62,6 +63,11 @@ def aprovar(id_triagem):
 @bp_triagens.route("/<int:id_triagem>/reprovar", methods=["PATCH"])
 def reprovar(id_triagem):
     return responder_http(reprovar_triagem(id_triagem))
+
+
+@bp_triagens.route("/<int:id_triagem>/sugestao-dentista", methods=["GET"])
+def sugerir_dentista(id_triagem):
+    return responder_http(sugerir_dentista_para_triagem(id_triagem))
 
 
 @bp_triagens.route("/<int:id_triagem>/paciente", methods=["POST"])

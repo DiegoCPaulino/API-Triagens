@@ -609,6 +609,132 @@ Sugere o dentista mais adequado para o paciente considerando: disponibilidade de
 
 ---
 
+---
+
+#### `GET /api/triagens/<id>/sugestao-dentista`
+
+Sugere o dentista mais adequado usando os dados geográficos da **triagem** (via `TB_TRIAGEM → TB_PESSOA → TB_ENDERECO`), sem depender de `TB_PACIENTE`. Essa rota foi criada para o fluxo de aprovação do backend Java/Quarkus, que cria o paciente dentro de uma transação ainda não commitada — nesse momento o ID do paciente não é visível por outras conexões Oracle.
+
+**Parâmetros de path:** `id` — ID da triagem.
+
+**Quando usar:** durante o fluxo de aprovação de triagem pelo Java, **antes** de o `TB_PACIENTE` ser persistido. Para pacientes já existentes, use `GET /api/pacientes/<id>/sugestao-dentista`.
+
+> A distância retornada é **aproximada em linha reta** (Haversine sobre Nominatim/OSM). Quando Nominatim está indisponível, aplica fallback por cidade/UF/CEP e retorna `distancia_km: null`.
+
+##### Campos da resposta
+
+Idênticos ao endpoint por paciente, com a adição de `id_triagem` e `id_pessoa` no objeto `paciente`, e `id_paciente: null` (o paciente ainda não existe no banco).
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `paciente.id_paciente` | null | Sempre `null` — paciente ainda não persistido |
+| `paciente.id_triagem` | integer | ID da triagem usada como origem |
+| `paciente.id_pessoa` | integer | ID da pessoa vinculada à triagem |
+| `paciente.nome` | string | Nome completo (de `TB_PESSOA`) |
+| `paciente.cidade` | string | Cidade (de `TB_ENDERECO`) |
+| `paciente.uf` | string | UF (de `TB_ENDERECO`) |
+| `paciente.cep` | string | CEP (de `TB_ENDERECO`) |
+| `dentista_sugerido` | object \| null | Dentista sugerido; `null` quando não há nenhum disponível |
+| `distancia_km` | float \| null | Distância aproximada em km; `null` no fallback |
+| `metodo_calculo` | string | `"nominatim_haversine"`, `"cep_fallback"` ou `"sem_dentista_disponivel"` |
+| `criterio_fallback` | string \| null | `null` no cálculo real; `"mesma_cidade"`, `"mesma_uf"`, `"cep_aproximado"` ou `"qualquer_com_vaga"` no fallback |
+| `observacao` | string | Texto explicando o método e seus limites |
+| `diagnostico_calculo` | object | Flags de uso do Nominatim, Haversine, fallback e motivo |
+
+##### Exemplo A — Sucesso com Nominatim + Haversine
+
+```json
+{
+  "status": true,
+  "code": 200,
+  "message": "Dentista sugerido com sucesso.",
+  "data": {
+    "paciente": {
+      "id_paciente": null,
+      "id_triagem": 2,
+      "id_pessoa": 2,
+      "nome": "Ana Silva Santos",
+      "cidade": "Sao Paulo",
+      "uf": "SP",
+      "cep": "01001000"
+    },
+    "dentista_sugerido": {
+      "id_dentista": 1,
+      "nome": "Dr. Rafael Almeida",
+      "especialidade": "",
+      "cidade": "Sao Paulo",
+      "uf": "SP",
+      "cep": "05407002",
+      "vagas_disponiveis": 3
+    },
+    "distancia_km": 5.44,
+    "metodo_calculo": "nominatim_haversine",
+    "criterio_fallback": null,
+    "observacao": "Distância aproximada em linha reta via OpenStreetMap/Nominatim. Não considera rota viária, trânsito ou tempo de deslocamento.",
+    "diagnostico_calculo": {
+      "nominatim_utilizado": true,
+      "haversine_utilizado": true,
+      "fallback_utilizado": false,
+      "paciente_geocodificado": true,
+      "candidatos_geocodificados": 1,
+      "total_candidatos": 5,
+      "motivo_fallback": null
+    }
+  }
+}
+```
+
+##### Exemplo B — Fallback por cidade (Nominatim indisponível)
+
+```json
+{
+  "status": true,
+  "code": 200,
+  "message": "Dentista sugerido por fallback de proximidade.",
+  "data": {
+    "paciente": {
+      "id_paciente": null,
+      "id_triagem": 2,
+      "id_pessoa": 2,
+      "nome": "Ana Silva Santos",
+      "cidade": "Sao Paulo",
+      "uf": "SP",
+      "cep": "01001000"
+    },
+    "dentista_sugerido": {
+      "id_dentista": 1,
+      "nome": "Dr. Rafael Almeida",
+      "especialidade": "",
+      "cidade": "Sao Paulo",
+      "uf": "SP",
+      "cep": "05407002",
+      "vagas_disponiveis": 3
+    },
+    "distancia_km": null,
+    "metodo_calculo": "cep_fallback",
+    "criterio_fallback": "mesma_cidade",
+    "observacao": "Geocodificação indisponível; sugestão feita por cidade, UF e aproximação de CEP. Distância real não calculada.",
+    "diagnostico_calculo": {
+      "nominatim_utilizado": false,
+      "haversine_utilizado": false,
+      "fallback_utilizado": true,
+      "paciente_geocodificado": false,
+      "candidatos_geocodificados": 0,
+      "total_candidatos": 3,
+      "motivo_fallback": "paciente_nao_geocodificado"
+    }
+  }
+}
+```
+
+**Resposta — 404 (triagem não encontrada):** `{"status": false, "code": 404, "message": "Triagem não encontrada.", "data": null}`
+
+**Resposta — 404 (nenhum dentista com vaga):** retorna 404 com `data.metodo_calculo: "sem_dentista_disponivel"`.
+
+> **Importante:** o Java deve consumir `data.dentista_sugerido.id_dentista`, `data.distancia_km` e `data.metodo_calculo` desta resposta para executar o match. Substituir a chamada para `GET /api/pacientes/{idPaciente}/sugestao-dentista` por `GET /api/triagens/{idTriagem}/sugestao-dentista` no `MatchService`.
+
+---
+
 #### `PATCH /api/pacientes/<id>/dentista`
 
 Vincula um dentista ao paciente, decrementando `vagas_disponiveis` do dentista escolhido. Suporta reassociação: se o paciente já tiver um dentista vinculado, a vaga do dentista anterior é restaurada antes do novo vínculo ser criado.

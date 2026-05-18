@@ -42,88 +42,46 @@ def _pre_filtrar(dentistas, cidade_pac, uf_pac, cep_pac):
     return dentistas[:_MAX_CANDIDATOS], "qualquer_com_vaga"
 
 
-def sugerir_dentista_para_paciente(id_paciente) -> dict:
-    resultado_id = validar_id_numerico(id_paciente)
-    if not resultado_id["status"]:
-        return resultado_id
+def _buscar_dentistas_disponiveis(cur):
+    """Retorna rows brutas dos dentistas ativos com vagas, via JOIN TB_ENDERECO."""
+    cur.execute(
+        """
+        SELECT
+            D.ID_DENTISTA,
+            D.NOME,
+            '' AS ESPECIALIDADE,
+            E.CEP,
+            E.LOGRADOURO,
+            E.NUMERO,
+            E.BAIRRO,
+            E.CIDADE,
+            E.UF,
+            (D.CAP_MENSAL - D.ATIVOS) AS VAGAS_DISPONIVEIS
+        FROM TB_DENTISTA D
+        JOIN TB_ENDERECO E
+            ON E.ID_ENDERECO = D.ID_ENDERECO
+        WHERE UPPER(D.STTS_DENT) = 'ATIVO'
+          AND D.ATIVOS < D.CAP_MENSAL
+        ORDER BY D.ID_DENTISTA
+        """
+    )
+    return cur.fetchall()
 
-    conexao = obter_conexao()
-    if conexao is None:
-        return gerar_resposta(False, 500, "Falha ao conectar ao banco.")
 
-    try:
-        with conexao:
-            with conexao.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT
-                        PAC.ID_PACIENTE,
-                        P.NOME_COMPLETO,
-                        E.LOGRADOURO,
-                        E.NUMERO,
-                        E.BAIRRO,
-                        E.CIDADE,
-                        E.UF,
-                        E.CEP
-                    FROM TB_PACIENTE PAC
-                    JOIN TB_PESSOA P
-                        ON P.ID_PESSOA = PAC.ID_PESSOA
-                    JOIN TB_ENDERECO E
-                        ON E.ID_ENDERECO = P.ID_ENDERECO
-                    WHERE PAC.ID_PACIENTE = :id
-                    """,
-                    {"id": resultado_id["data"]}
-                )
-                row_pac = cur.fetchone()
-                if row_pac is None:
-                    return gerar_resposta(False, 404, "Paciente não encontrado.")
+def _executar_sugestao(origem_info: dict, rows_dent: list) -> dict:
+    """
+    Pré-filtra candidatos, geocodifica com Nominatim, calcula distância por Haversine.
+    Aplica fallback obrigatório quando geocodificação falha.
 
-                paciente = {
-                    "id_paciente": row_pac[0],
-                    "nome": row_pac[1] or "",
-                    "logradouro": row_pac[2] or "",
-                    "numero": row_pac[3] or "",
-                    "bairro": row_pac[4] or "",
-                    "cidade": (row_pac[5] or "").strip(),
-                    "uf": (row_pac[6] or "").strip().upper(),
-                    "cep": row_pac[7] or "",
-                }
-
-                cur.execute(
-                    """
-                    SELECT
-                        D.ID_DENTISTA,
-                        D.NOME,
-                        '' AS ESPECIALIDADE,
-                        E.CEP,
-                        E.LOGRADOURO,
-                        E.NUMERO,
-                        E.BAIRRO,
-                        E.CIDADE,
-                        E.UF,
-                        (D.CAP_MENSAL - D.ATIVOS) AS VAGAS_DISPONIVEIS
-                    FROM TB_DENTISTA D
-                    JOIN TB_ENDERECO E
-                        ON E.ID_ENDERECO = D.ID_ENDERECO
-                    WHERE UPPER(D.STTS_DENT) = 'ATIVO'
-                        AND D.ATIVOS < D.CAP_MENSAL
-                    ORDER BY D.ID_DENTISTA
-                    """
-                    )
-                rows_dent = cur.fetchall()
-
-    except oracledb.DatabaseError as exc:
-        return gerar_resposta(False, 500, f"Erro no banco: {exc}")
+    origem_info deve conter: nome, logradouro, numero, bairro, cidade, uf, cep
+    e quaisquer chaves de identidade relevantes (id_paciente, id_triagem, id_pessoa).
+    """
+    _IDENTITY_KEYS = ("id_paciente", "id_triagem", "id_pessoa", "nome", "cidade", "uf", "cep")
+    paciente_out = {k: v for k, v in origem_info.items() if k in _IDENTITY_KEYS}
 
     if not rows_dent:
         data = {
-            "paciente": {
-                "id_paciente": paciente["id_paciente"],
-                "nome": paciente["nome"],
-                "cidade": paciente["cidade"],
-                "uf": paciente["uf"],
-                "cep": paciente["cep"],
-            },
+            "paciente": paciente_out,
             "dentista_sugerido": None,
             "distancia_km": None,
             "metodo_calculo": "sem_dentista_disponivel",
@@ -143,16 +101,16 @@ def sugerir_dentista_para_paciente(id_paciente) -> dict:
         for r in rows_dent
     ]
 
-    cidade_pac = paciente["cidade"].lower()
-    uf_pac = paciente["uf"]
-    cep_pac = paciente["cep"]
+    cidade_pac = origem_info["cidade"].lower()
+    uf_pac = origem_info["uf"]
+    cep_pac = origem_info["cep"]
 
     candidatos, criterio = _pre_filtrar(dentistas, cidade_pac, uf_pac, cep_pac)
 
     # --- Tentativa de geocodificação ---
     end_pac = montar_endereco_textual(
-        paciente["logradouro"], paciente["numero"], paciente["bairro"],
-        paciente["cidade"], paciente["uf"], paciente["cep"]
+        origem_info["logradouro"], origem_info["numero"], origem_info["bairro"],
+        origem_info["cidade"], origem_info["uf"], origem_info["cep"]
     )
     geo_pac = geocodificar_endereco(end_pac)
 
@@ -187,13 +145,7 @@ def sugerir_dentista_para_paciente(id_paciente) -> dict:
             "vagas_disponiveis": melhor_cand["vagas_disponiveis"],
         }
         data = {
-            "paciente": {
-                "id_paciente": paciente["id_paciente"],
-                "nome": paciente["nome"],
-                "cidade": paciente["cidade"],
-                "uf": paciente["uf"],
-                "cep": paciente["cep"],
-            },
+            "paciente": paciente_out,
             "dentista_sugerido": dentista_out,
             "distancia_km": melhor_dist,
             "metodo_calculo": "nominatim_haversine",
@@ -234,13 +186,7 @@ def sugerir_dentista_para_paciente(id_paciente) -> dict:
     }.get(criterio, criterio)
 
     data = {
-        "paciente": {
-            "id_paciente": paciente["id_paciente"],
-            "nome": paciente["nome"],
-            "cidade": paciente["cidade"],
-            "uf": paciente["uf"],
-            "cep": paciente["cep"],
-        },
+        "paciente": paciente_out,
         "dentista_sugerido": dentista_out,
         "distancia_km": None,
         "metodo_calculo": "cep_fallback",
@@ -260,3 +206,120 @@ def sugerir_dentista_para_paciente(id_paciente) -> dict:
         },
     }
     return gerar_resposta(True, 200, "Dentista sugerido por fallback de proximidade.", data)
+
+
+def sugerir_dentista_para_paciente(id_paciente) -> dict:
+    resultado_id = validar_id_numerico(id_paciente)
+    if not resultado_id["status"]:
+        return resultado_id
+
+    conexao = obter_conexao()
+    if conexao is None:
+        return gerar_resposta(False, 500, "Falha ao conectar ao banco.")
+
+    try:
+        with conexao:
+            with conexao.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT
+                        PAC.ID_PACIENTE,
+                        P.NOME_COMPLETO,
+                        E.LOGRADOURO,
+                        E.NUMERO,
+                        E.BAIRRO,
+                        E.CIDADE,
+                        E.UF,
+                        E.CEP
+                    FROM TB_PACIENTE PAC
+                    JOIN TB_PESSOA P
+                        ON P.ID_PESSOA = PAC.ID_PESSOA
+                    JOIN TB_ENDERECO E
+                        ON E.ID_ENDERECO = P.ID_ENDERECO
+                    WHERE PAC.ID_PACIENTE = :id
+                    """,
+                    {"id": resultado_id["data"]}
+                )
+                row_pac = cur.fetchone()
+                if row_pac is None:
+                    return gerar_resposta(False, 404, "Paciente não encontrado.")
+
+                origem_info = {
+                    "id_paciente": row_pac[0],
+                    "nome": row_pac[1] or "",
+                    "logradouro": row_pac[2] or "",
+                    "numero": row_pac[3] or "",
+                    "bairro": row_pac[4] or "",
+                    "cidade": (row_pac[5] or "").strip(),
+                    "uf": (row_pac[6] or "").strip().upper(),
+                    "cep": row_pac[7] or "",
+                }
+
+                rows_dent = _buscar_dentistas_disponiveis(cur)
+
+    except oracledb.DatabaseError as exc:
+        return gerar_resposta(False, 500, f"Erro no banco: {exc}")
+
+    return _executar_sugestao(origem_info, rows_dent)
+
+
+def sugerir_dentista_para_triagem(id_triagem) -> dict:
+    """
+    Sugere dentista com base nos dados de endereço da triagem (TB_TRIAGEM → TB_PESSOA → TB_ENDERECO).
+    Usado pelo Java durante o fluxo de aprovação, antes de o paciente ser commitado no banco.
+    """
+    resultado_id = validar_id_numerico(id_triagem)
+    if not resultado_id["status"]:
+        return resultado_id
+
+    conexao = obter_conexao()
+    if conexao is None:
+        return gerar_resposta(False, 500, "Falha ao conectar ao banco.")
+
+    try:
+        with conexao:
+            with conexao.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT
+                        T.ID_TRIAGEM,
+                        P.ID_PESSOA,
+                        P.NOME_COMPLETO,
+                        E.LOGRADOURO,
+                        E.NUMERO,
+                        E.BAIRRO,
+                        E.CIDADE,
+                        E.UF,
+                        E.CEP
+                    FROM TB_TRIAGEM T
+                    JOIN TB_PESSOA P
+                        ON P.ID_PESSOA = T.ID_PESSOA
+                    JOIN TB_ENDERECO E
+                        ON E.ID_ENDERECO = P.ID_ENDERECO
+                    WHERE T.ID_TRIAGEM = :id
+                    """,
+                    {"id": resultado_id["data"]}
+                )
+                row_tri = cur.fetchone()
+                if row_tri is None:
+                    return gerar_resposta(False, 404, "Triagem não encontrada.")
+
+                origem_info = {
+                    "id_paciente": None,
+                    "id_triagem": row_tri[0],
+                    "id_pessoa": row_tri[1],
+                    "nome": row_tri[2] or "",
+                    "logradouro": row_tri[3] or "",
+                    "numero": row_tri[4] or "",
+                    "bairro": row_tri[5] or "",
+                    "cidade": (row_tri[6] or "").strip(),
+                    "uf": (row_tri[7] or "").strip().upper(),
+                    "cep": row_tri[8] or "",
+                }
+
+                rows_dent = _buscar_dentistas_disponiveis(cur)
+
+    except oracledb.DatabaseError as exc:
+        return gerar_resposta(False, 500, f"Erro no banco: {exc}")
+
+    return _executar_sugestao(origem_info, rows_dent)
